@@ -16,14 +16,21 @@ It is designed to run in a Docker container to ensure consistent font rendering 
    ```
 *Note: This uses your local OS fonts. If "Inter" is not installed on your system, it will fallback to sans-serif.*
 
-### Option 2: Run with Docker (Recommended for testing fonts)
+### Option 2: Run with Docker Compose (Easiest & Best for Debugging)
+1. Start the service:
+   ```bash
+   docker-compose up --build
+   ```
+*This will build the image and start the container on port 3005. It also mounts your local files so changes to `server.js` (with nodemon) will reflect inside the container without a full rebuild.*
+
+### Option 3: Run with Docker (Manual)
 1. Build the image:
    ```bash
    docker build -t resume-pdf-service .
    ```
 2. Run the container:
    ```bash
-   docker run -p 3005:3000 -e PORT=3000 resume-pdf-service
+   docker run -p 3005:3000 -e PORT=3000 -e NODE_ENV=production resume-pdf-service
    ```
 *Note: This maps port 3005 on your host to port 3000 in the container. The Dockerfile installs the Inter font correctly.*
 

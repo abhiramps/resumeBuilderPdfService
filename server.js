@@ -12,20 +12,46 @@ app.use(express.json({ limit: '10mb' }));
 
 // Helper to find Chrome path in Docker
 const getChromePath = () => {
+  console.log('Environment Debug:', {
+    NODE_ENV: process.env.NODE_ENV,
+    PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH,
+    USER: process.env.USER,
+    PATH: process.env.PATH
+  });
+
+  // Check environment variable set by the official Puppeteer Docker image or our Dockerfile
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+      console.log('Using verified PUPPETEER_EXECUTABLE_PATH:', process.env.PUPPETEER_EXECUTABLE_PATH);
+      return process.env.PUPPETEER_EXECUTABLE_PATH;
+    } else {
+      console.error('PUPPETEER_EXECUTABLE_PATH defined but file NOT found:', process.env.PUPPETEER_EXECUTABLE_PATH);
+    }
+  }
+
   if (process.env.NODE_ENV !== 'production') return undefined;
   
   const paths = [
-    '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
     '/usr/bin/chromium',
-    '/usr/bin/chromium-browser'
+    '/usr/bin/chromium-browser',
+    '/opt/google/chrome/google-chrome'
   ];
   
   for (const path of paths) {
-    if (fs.existsSync(path)) return path;
+    if (fs.existsSync(path)) {
+      console.log('Found system Chrome at:', path);
+      return path;
+    }
   }
   
-  console.warn('Warning: Could not find system Chrome. Defaulting to puppeteer bundled path.');
+  console.warn('Warning: Could not find system Chrome in common paths. List of /usr/bin/google*:');
+  try {
+    const files = fs.readdirSync('/usr/bin').filter(f => f.startsWith('google'));
+    console.log(files);
+  } catch (e) {}
+
   return undefined;
 };
 
@@ -80,17 +106,26 @@ app.post('/generate-pdf', async (req, res) => {
         <head>
           <meta charset="UTF-8">
           <style>
-            ${css}
-            
-            /* Force global override */
-            html, body, * {
-              font-family: 'Inter', sans-serif !important;
+            /* Exact CSS Reset from Lambda */
+            *, ::before, ::after {
+              box-sizing: border-box;
+              border-width: 0;
+              border-style: solid;
+              border-color: #e5e7eb;
             }
-            
-            @page {
+            html, body {
               margin: 0;
-              size: letter;
+              padding: 0;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              -webkit-font-smoothing: antialiased;
+              -moz-osx-font-smoothing: grayscale;
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
+            * { font-family: inherit; }
+            
+            /* User CSS */
+            ${css}
           </style>
         </head>
         <body>
@@ -116,6 +151,7 @@ app.post('/generate-pdf', async (req, res) => {
       format: 'Letter',
       printBackground: true,
       displayHeaderFooter: false,
+      margin: { top: '0px', bottom: '0px', left: '0px', right: '0px' }, // Explicit zero margins
       preferCSSPageSize: true
     });
 

@@ -1,0 +1,15 @@
+services:
+  pdf-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3005:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+    restart: always
