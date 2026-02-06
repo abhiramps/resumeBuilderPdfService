@@ -2,12 +2,32 @@ require('dotenv').config();
 const express = require('express');
 const puppeteer = require('puppeteer');
 const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Helper to find Chrome path in Docker
+const getChromePath = () => {
+  if (process.env.NODE_ENV !== 'production') return undefined;
+  
+  const paths = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser'
+  ];
+  
+  for (const path of paths) {
+    if (fs.existsSync(path)) return path;
+  }
+  
+  console.warn('Warning: Could not find system Chrome. Defaulting to puppeteer bundled path.');
+  return undefined;
+};
 
 app.get('/health', (req, res) => {
   res.status(200).json({
@@ -34,11 +54,9 @@ app.post('/generate-pdf', async (req, res) => {
   let browser = null;
 
   try {
-    const executablePath = process.env.NODE_ENV === 'production' 
-      ? '/usr/bin/google-chrome' 
-      : undefined;
+    const executablePath = getChromePath();
 
-    console.log(`[${requestId}] Launching browser... environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`[${requestId}] Launching browser... environment: ${process.env.NODE_ENV || 'development'}, path: ${executablePath || 'bundled'}`);
     browser = await puppeteer.launch({
       headless: true,
       executablePath,
