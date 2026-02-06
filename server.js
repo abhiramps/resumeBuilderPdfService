@@ -10,35 +10,52 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 app.get('/health', (req, res) => {
-  res.status(200).send('PDF Service is OK');
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+    memoryUsage: process.memoryUsage(),
+    platform: process.platform
+  });
 });
 
 app.post('/generate-pdf', async (req, res) => {
   const { html, css } = req.body;
+  const requestId = Math.random().toString(36).substring(7);
 
   if (!html) {
+    console.error(`[${requestId}] Error: HTML is required`);
     return res.status(400).json({ error: 'HTML is required' });
   }
 
-  console.log('Received PDF generation request');
+  console.log(`[${requestId}] Received PDF generation request. Payload size: ${Math.round((JSON.stringify(req.body).length) / 1024)} KB`);
+  const startTime = Date.now();
   let browser = null;
 
   try {
-    // Launch browser (fresh instance per request to avoid memory leaks on low-RAM hosts)
+    const executablePath = process.env.NODE_ENV === 'production' 
+      ? '/usr/bin/google-chrome' 
+      : undefined;
+
+    console.log(`[${requestId}] Launching browser... environment: ${process.env.NODE_ENV || 'development'}`);
     browser = await puppeteer.launch({
       headless: true,
+      executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage', // Critical for Docker/Render
+        '--disable-dev-shm-usage',
         '--font-render-hinting=none'
       ]
     });
 
     const page = await browser.newPage();
+    
+    // Log console messages from within the page
+    page.on('console', msg => console.log(`[${requestId}] Browser Console:`, msg.text()));
+    page.on('error', err => console.error(`[${requestId}] Browser Page Error:`, err));
 
-    // Construct HTML with Global Font Reset
-    // Note: 'Inter' will be installed as a system font in the Docker container
     const fullHtml = `
       <!DOCTYPE html>
       <html>
@@ -64,18 +81,19 @@ app.post('/generate-pdf', async (req, res) => {
       </html>
     `;
 
+    console.log(`[${requestId}] Setting page content...`);
     await page.setContent(fullHtml, {
       waitUntil: 'networkidle0',
       timeout: 30000
     });
 
-    // We don't need document.fonts.load() if it's a system font!
-    // But we can check it just in case.
+    console.log(`[${requestId}] Checking font availability...`);
     const fonts = await page.evaluate(() => {
         return document.fonts.check('12px Inter');
     });
-    console.log('Inter font available:', fonts);
+    console.log(`[${requestId}] Inter font available:`, fonts);
 
+    console.log(`[${requestId}] Generating PDF...`);
     const pdfBuffer = await page.pdf({
       format: 'Letter',
       printBackground: true,
@@ -83,17 +101,20 @@ app.post('/generate-pdf', async (req, res) => {
       preferCSSPageSize: true
     });
 
-    console.log(`PDF Generated. Size: ${pdfBuffer.length} bytes`);
+    const duration = Date.now() - startTime;
+    console.log(`[${requestId}] PDF Generated successfully. Size: ${pdfBuffer.length} bytes. Duration: ${duration}ms`);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="resume.pdf"');
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error('PDF Generation Error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[${requestId}] PDF Generation Error after ${duration}ms:`, error);
     res.status(500).json({ error: error.message });
   } finally {
     if (browser) {
+      console.log(`[${requestId}] Closing browser...`);
       await browser.close();
     }
   }

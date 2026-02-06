@@ -33,6 +33,9 @@ RUN chown -R pptruser:pptruser /usr/src/app
 # Switch to the non-root user provided by the base image for security
 USER pptruser
 
+# Set environment to production
+ENV NODE_ENV=production
+
 # Expose port
 EXPOSE 3000
 
